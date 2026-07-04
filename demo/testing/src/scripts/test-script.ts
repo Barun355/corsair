@@ -18,11 +18,24 @@ async function setInstagramCredentials() {
 	}
 }
 
+async function setMailchimpCredentials() {
+	const { MAILCHIMP_API_KEY } = process.env;
+	if (MAILCHIMP_API_KEY) {
+		await corsair.mailchimp.keys.set_api_key(MAILCHIMP_API_KEY);
+	}
+}
+
 const main = async () => {
-	const res = await corsair.slack.api.messages.post({
-		channel: 'general',
-		text: 'hello',
-	});
+	await setInstagramCredentials();
+	await setMailchimpCredentials();
+
+	if (process.env.MAILCHIMP_API_KEY) {
+		const ping = await corsair.mailchimp.api.account.ping({});
+		console.log('mailchimp ping:', ping);
+
+		const lists = await corsair.mailchimp.api.lists.list({ count: 5 });
+		console.log('mailchimp lists:', lists);
+	}
 };
 
 main().catch((err) => {

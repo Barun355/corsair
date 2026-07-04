@@ -35,6 +35,7 @@
     "@corsair-dev/googlesheets": "workspace:*",
     "@corsair-dev/hubspot": "workspace:^",
     "@corsair-dev/linear": "workspace:*",
+    "@corsair-dev/mailchimp": "workspace:*",
     "@corsair-dev/mcp": "workspace:*",
     "@corsair-dev/notion": "workspace:*",
     "@corsair-dev/onedrive": "workspace:*",
