@@ -177,9 +177,6 @@ importers:
       '@corsair-dev/linear':
         specifier: workspace:*
         version: link:../../packages/linear
-      '@corsair-dev/mailchimp':
-        specifier: workspace:*
-        version: link:../../packages/mailchimp
       '@corsair-dev/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
