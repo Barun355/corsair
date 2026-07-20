@@ -69,6 +69,68 @@ export function bearerAuthHeader(accessToken: string): string {
 	return `Bearer ${accessToken}`;
 }
 
+/**
+ * Packs an OAuth access token + its resolved data center into a single string
+ * that flows through `ctx.key`. The data center is resolved once via the OAuth
+ * metadata endpoint (in the keyBuilder) and reused on every subsequent request,
+ * so per-call code does not need to re-fetch it or know the auth mode.
+ *
+ * API-key connections do not need packing (the data center is encoded in the
+ * key suffix) and pass through `parseMailchimpKey` unchanged.
+ */
+export function packMailchimpOAuthKey(
+	accessToken: string,
+	dataCenter: string,
+): string {
+	if (!accessToken) {
+		throw new Error(
+			'A Mailchimp access token is required to pack an OAuth key.',
+		);
+	}
+	if (!dataCenter) {
+		throw new Error(
+			'A Mailchimp data center is required to pack an OAuth key.',
+		);
+	}
+	return JSON.stringify({ token: accessToken, dc: dataCenter });
+}
+
+export type ParsedMailchimpKey = {
+	token: string;
+	authType: 'api_key' | 'oauth_2';
+	dataCenter?: string;
+};
+
+/**
+ * Splits a `ctx.key` value into the underlying credential + auth metadata.
+ *
+ * - JSON-packed keys (OAuth) carry the access token, the `oauth_2` auth type,
+ *   and the resolved data center.
+ * - Bare strings are treated as API keys (`api_key` auth type, data center
+ *   derived from the `-<dc>` suffix by the caller).
+ */
+export function parseMailchimpKey(rawKey: string): ParsedMailchimpKey {
+	if (!rawKey) {
+		throw new Error('A Mailchimp key is required.');
+	}
+	const trimmed = rawKey.trim();
+	if (trimmed.startsWith('{')) {
+		let parsed: { token?: unknown; dc?: unknown };
+		try {
+			parsed = JSON.parse(trimmed);
+		} catch {
+			throw new Error('Invalid packed Mailchimp OAuth key.');
+		}
+		if (typeof parsed.token !== 'string' || typeof parsed.dc !== 'string') {
+			throw new Error(
+				'Malformed packed Mailchimp OAuth key: expected { token, dc }.',
+			);
+		}
+		return { token: parsed.token, authType: 'oauth_2', dataCenter: parsed.dc };
+	}
+	return { token: rawKey, authType: 'api_key' };
+}
+
 export type MailchimpListQuery = {
 	count?: number;
 	offset?: number;

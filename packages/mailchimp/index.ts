@@ -15,7 +15,7 @@ import type {
 	RequiredPluginEndpointSchemas,
 	RequiredPluginWebhookSchemas,
 } from 'corsair/core';
-
+import { fetchMailchimpOAuthMetadata } from './client';
 import {
 	AccountEndpoints,
 	CampaignsEndpoints,
@@ -37,6 +37,7 @@ import {
 } from './endpoints/types';
 import { errorHandlers } from './error-handlers';
 import { MailchimpSchema } from './schema';
+import { packMailchimpOAuthKey } from './utils';
 import { MailchimpTriggerWebhooks } from './webhooks';
 import { resolveMailchimpOAuthWebhookTenantLink } from './webhooks/oauth-tenant-link';
 import { matchMailchimpTenantWebhook } from './webhooks/tenant-matcher';
@@ -742,8 +743,15 @@ export function mailchimp<const T extends MailchimpPluginOptions>(
 			}
 
 			if (source === 'endpoint' && ctx.authType === 'oauth_2') {
-				const res = await ctx.keys.get_access_token();
-				return res ?? '';
+				const accessToken = await ctx.keys.get_access_token();
+				if (!accessToken) return '';
+				// OAuth access tokens do not encode a data center, so resolve it
+				// once via the metadata endpoint and pack it into ctx.key. The
+				// client parses the packed key to build the correct base URL and
+				// use Bearer auth without each endpoint needing to know the
+				// auth mode.
+				const metadata = await fetchMailchimpOAuthMetadata(accessToken);
+				return packMailchimpOAuthKey(accessToken, metadata.dc);
 			}
 
 			return '';

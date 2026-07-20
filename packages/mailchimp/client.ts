@@ -6,6 +6,7 @@ import {
 	bearerAuthHeader,
 	dataCenterFromApiKey,
 	mailchimpBaseUrl,
+	parseMailchimpKey,
 } from './utils';
 
 export class MailchimpAPIError extends Error {
@@ -110,17 +111,22 @@ export async function makeMailchimpRequest<T>(
 	key: string,
 	options: MailchimpRequestOptions = {},
 ): Promise<T> {
-	const { method = 'GET', body, query, authType = 'api_key' } = options;
+	const parsed = parseMailchimpKey(key);
+	const { method = 'GET', body, query } = options;
+	const authType = options.authType ?? parsed.authType;
+	const dataCenter = options.dataCenter ?? parsed.dataCenter;
 
 	const authorization =
-		authType === 'oauth_2' ? bearerAuthHeader(key) : basicAuthHeader(key);
+		authType === 'oauth_2'
+			? bearerAuthHeader(parsed.token)
+			: basicAuthHeader(parsed.token);
 
 	const config: OpenAPIConfig = {
-		BASE: resolveMailchimpBaseUrl(key, options),
+		BASE: resolveMailchimpBaseUrl(parsed.token, { authType, dataCenter }),
 		VERSION: '3.0',
 		WITH_CREDENTIALS: false,
 		CREDENTIALS: 'omit',
-		TOKEN: key,
+		TOKEN: parsed.token,
 		HEADERS: {
 			'Content-Type': 'application/json',
 			Authorization: authorization,
