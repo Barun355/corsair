@@ -92,6 +92,45 @@ export async function fetchMailchimpOAuthMetadata(
 	return metadata;
 }
 
+/**
+ * Resolves the Mailchimp account_id for the current connection so it can be
+ * embedded into webhook URLs as a routing hint. OAuth pulls it from the cached
+ * metadata; API-key fetches `/` once and caches per token. Bounded FIFO like
+ * the OAuth metadata cache.
+ */
+const ACCOUNT_ID_CACHE_MAX = 1000;
+const accountIdCache = new Map<string, string>();
+
+export async function getMailchimpAccountId(
+	key: string,
+): Promise<string | undefined> {
+	const parsed = parseMailchimpKey(key);
+	const cached = accountIdCache.get(parsed.token);
+	if (cached) return cached;
+
+	let accountId: string | undefined;
+	if (parsed.authType === 'oauth_2') {
+		const metadata = await fetchMailchimpOAuthMetadata(parsed.token);
+		accountId = metadata.account_id;
+	} else {
+		const root = await makeMailchimpRequest<{ account_id?: unknown }>(
+			'/',
+			key,
+			{ method: 'GET' },
+		);
+		if (typeof root?.account_id === 'string') accountId = root.account_id;
+	}
+
+	if (accountId) {
+		if (accountIdCache.size >= ACCOUNT_ID_CACHE_MAX) {
+			const oldestKey = accountIdCache.keys().next().value;
+			if (oldestKey) accountIdCache.delete(oldestKey);
+		}
+		accountIdCache.set(parsed.token, accountId);
+	}
+	return accountId;
+}
+
 export type MailchimpRequestOptions = {
 	method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 	body?: Record<string, unknown>;
