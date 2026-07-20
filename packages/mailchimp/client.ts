@@ -38,6 +38,15 @@ export type MailchimpOAuthMetadata = {
  * Mailchimp metadata endpoint. Call this once after OAuth and persist the `dc`
  * so per-request calls can build the correct base URL without re-fetching.
  */
+/**
+ * Per-token metadata cache so we only hit Mailchimp's metadata endpoint once
+ * per access token. Mailchimp access tokens do not expire, so the resolved
+ * data center is stable for the token's lifetime; caching avoids doubling
+ * latency on every OAuth request and removes the metadata endpoint as a
+ * single point of failure for already-resolved tenants.
+ */
+const oauthMetadataCache = new Map<string, MailchimpOAuthMetadata>();
+
 export async function fetchMailchimpOAuthMetadata(
 	accessToken: string,
 ): Promise<MailchimpOAuthMetadata> {
@@ -46,6 +55,9 @@ export async function fetchMailchimpOAuthMetadata(
 			'An access token is required to resolve Mailchimp OAuth metadata.',
 		);
 	}
+
+	const cached = oauthMetadataCache.get(accessToken);
+	if (cached) return cached;
 
 	const res = await fetch(MAILCHIMP_OAUTH_METADATA_URL, {
 		headers: { Authorization: `OAuth ${accessToken}` },
@@ -62,12 +74,14 @@ export async function fetchMailchimpOAuthMetadata(
 			'Mailchimp OAuth metadata did not include a data center.',
 		);
 	}
-	return {
+	const metadata: MailchimpOAuthMetadata = {
 		dc: body.dc,
 		api_endpoint: body.api_endpoint,
 		login_url: body.login_url,
 		account_id: body.account_id,
 	};
+	oauthMetadataCache.set(accessToken, metadata);
+	return metadata;
 }
 
 export type MailchimpRequestOptions = {
