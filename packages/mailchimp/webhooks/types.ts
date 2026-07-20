@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import type {
 	CorsairWebhookMatcher,
 	RawWebhookRequest,
@@ -188,7 +189,8 @@ export function createMailchimpMatch(eventType: string): CorsairWebhookMatcher {
  * Mailchimp does not sign webhook requests. The recommended way to secure a
  * Mailchimp webhook is to embed a secret in the webhook URL and validate it on
  * receipt. This checks the configured secret against a query parameter
- * (default `secret`).
+ * (default `secret`) using a constant-time comparison so timing side-channels
+ * cannot leak the configured secret byte-by-byte.
  */
 export function verifyMailchimpWebhookSecret(
 	request: Pick<WebhookRequest<unknown>, 'query'>,
@@ -203,19 +205,11 @@ export function verifyMailchimpWebhookSecret(
 	if (!provided) {
 		return { valid: false, error: `Missing "${paramName}" query parameter` };
 	}
-	if (provided !== secret) {
+	if (provided.length !== secret.length) {
 		return { valid: false, error: 'Invalid webhook secret' };
 	}
-	return { valid: true };
-}
-
-/**
- * @deprecated Mailchimp webhooks are unsigned — prefer
- * {@link verifyMailchimpWebhookSecret}. Retained for scaffold compatibility.
- */
-export function verifyMailchimpWebhookSignature(
-	_request: WebhookRequest<MailchimpWebhookPayload>,
-	_secret: string,
-): { valid: boolean; error?: string } {
+	if (!timingSafeEqual(Buffer.from(provided), Buffer.from(secret))) {
+		return { valid: false, error: 'Invalid webhook secret' };
+	}
 	return { valid: true };
 }

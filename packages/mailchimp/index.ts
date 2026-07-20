@@ -710,6 +710,10 @@ export function mailchimp<const T extends MailchimpPluginOptions>(
 		endpointSchemas: mailchimpEndpointSchemas,
 		webhookSchemas: mailchimpWebhookSchemas,
 		pluginWebhookMatcher: (request) => {
+			// Match on event type so other providers with overlapping event
+			// names cannot claim these webhooks. Mailchimp does not sign
+			// requests, so URL/header routing hints are unavailable here;
+			// tenant disambiguation happens in pluginTenantWebhookMatcher.
 			const body = parseMailchimpWebhookBody(request.body);
 			const type = body?.type;
 			return (
