@@ -7,9 +7,7 @@ import { gmail } from '@corsair-dev/gmail';
 import { googlecalendar } from '@corsair-dev/googlecalendar';
 import { googlesheets } from '@corsair-dev/googlesheets';
 import { hubspot } from '@corsair-dev/hubspot';
-import { instagram } from '@corsair-dev/instagram';
 import { linear } from '@corsair-dev/linear';
-import { mailchimp } from '@corsair-dev/mailchimp';
 import { onedrive } from '@corsair-dev/onedrive';
 import { sharepoint } from '@corsair-dev/sharepoint';
 import { slack } from '@corsair-dev/slack';
@@ -66,10 +64,5 @@ export const corsair = createCorsair({
 			webhookSecret: process.env.VAPI_WEBHOOK_SECRET,
 		}),
 		instagram(),
-		mailchimp({
-			authType: 'api_key',
-			key: process.env.MAILCHIMP_API_KEY,
-			webhookSecret: process.env.MAILCHIMP_WEBHOOK_SECRET,
-		}),
 	],
 });
