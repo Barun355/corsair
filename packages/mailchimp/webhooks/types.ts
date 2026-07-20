@@ -16,17 +16,6 @@ export type MailchimpWebhookPayload = z.infer<
 	typeof MailchimpWebhookPayloadSchema
 >;
 
-export const ExampleEventSchema = MailchimpWebhookPayloadSchema.extend({
-	type: z.literal('example'),
-	data: z
-		.object({
-			id: z.string(),
-		})
-		.loose(),
-});
-
-export type ExampleEvent = z.infer<typeof ExampleEventSchema>;
-
 /**
  * Mailchimp's four webhook trigger types (list-scoped). `upemail` (email
  * change) and `cleaned` (bounce) are also delivered by the API and are
