@@ -135,3 +135,41 @@ describe('trigger event schemas', () => {
 		).toThrow();
 	});
 });
+
+describe('matchMailchimpTenantWebhook', () => {
+	// Lazy import so the test file can keep its existing top-level structure.
+	// eslint-disable-next-line @typescript-eslint/no-var-requires
+	const { matchMailchimpTenantWebhook } = require('../webhooks/tenant-matcher');
+
+	function buildRequest(body: string, query?: Record<string, string>) {
+		const request: RawWebhookRequest = {
+			headers: {},
+			body,
+			query,
+		};
+		return request;
+	}
+
+	it('routes by URL-embedded aid query param first (OAuth routing key)', () => {
+		const req = buildRequest(SUBSCRIBE_BODY, { aid: 'acc-123' });
+		const match = matchMailchimpTenantWebhook(req);
+		expect(match).toEqual({
+			linkType: 'tenant_external_id',
+			externalId: 'acc-123',
+		});
+	});
+
+	it('falls back to data.list_id when no aid is present', () => {
+		const req = buildRequest(SUBSCRIBE_BODY);
+		const match = matchMailchimpTenantWebhook(req);
+		expect(match).toEqual({
+			linkType: 'tenant_external_id',
+			externalId: 'a6b5da1054',
+		});
+	});
+
+	it('returns null when no routing signal is available', () => {
+		const req = buildRequest('type=subscribe&fired_at=2026-07-05+21%3A35%3A57');
+		expect(matchMailchimpTenantWebhook(req)).toBeNull();
+	});
+});

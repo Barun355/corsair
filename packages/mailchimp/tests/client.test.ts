@@ -1,5 +1,6 @@
 import {
 	fetchMailchimpOAuthMetadata,
+	getMailchimpAccountId,
 	MAILCHIMP_OAUTH_METADATA_URL,
 	MailchimpAPIError,
 	makeMailchimpRequest,
@@ -84,5 +85,32 @@ describe('makeMailchimpRequest auth-mode resolution', () => {
 		expect(config.HEADERS.Authorization).toBe(
 			`Basic ${Buffer.from('anystring:abc-us19').toString('base64')}`,
 		);
+	});
+});
+
+describe('getMailchimpAccountId', () => {
+	beforeEach(() => {
+		mockedRequest.mockClear();
+	});
+
+	it('resolves account_id from GET / for API-key auth', async () => {
+		mockedRequest.mockResolvedValueOnce({ account_id: 'acc-1' } as never);
+		const id = await getMailchimpAccountId('abc-us19');
+		expect(id).toBe('acc-1');
+		expect(mockedRequest).toHaveBeenCalledTimes(1);
+		const [, requestOptions] = mockedRequest.mock.calls[0]!;
+		expect(requestOptions?.url).toBe('/');
+		expect(requestOptions?.method).toBe('GET');
+	});
+
+	it('caches the resolved account_id per token (no second API call)', async () => {
+		mockedRequest.mockResolvedValueOnce({ account_id: 'acc-2' } as never);
+		// Different key from the previous test so module-level cache doesn't bleed.
+		const first = await getMailchimpAccountId('xyz-us19');
+		const second = await getMailchimpAccountId('xyz-us19');
+		expect(first).toBe('acc-2');
+		expect(second).toBe('acc-2');
+		// Only the first call hits the API; the second serves from cache.
+		expect(mockedRequest).toHaveBeenCalledTimes(1);
 	});
 });
