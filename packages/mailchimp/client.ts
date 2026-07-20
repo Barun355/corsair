@@ -1,5 +1,5 @@
 import type { ApiRequestOptions, OpenAPIConfig } from 'corsair/http';
-import { request } from 'corsair/http';
+import { ApiError, request } from 'corsair/http';
 
 import {
 	basicAuthHeader,
@@ -161,6 +161,10 @@ export async function makeMailchimpRequest<T>(
 	try {
 		return await request<T>(config, requestOptions);
 	} catch (error) {
+		// Preserve ApiError so error-handlers.ts instanceof checks (status
+		// routing, Retry-After on 429s) keep working instead of seeing a
+		// flattened MailchimpAPIError that lost status/retryAfter.
+		if (error instanceof ApiError) throw error;
 		if (error instanceof Error) {
 			throw new MailchimpAPIError(error.message);
 		}
