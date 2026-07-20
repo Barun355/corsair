@@ -1,9 +1,8 @@
 import type { WebhookRequest } from 'corsair/core';
 import { logEventFromContext } from 'corsair/core';
 import type { z } from 'zod';
-
-import { parseMailchimpKey } from '../utils';
 import type { MailchimpContext, MailchimpWebhooks } from '../index';
+import { parseMailchimpKey } from '../utils';
 import {
 	CampaignEventSchema,
 	createMailchimpMatch,
