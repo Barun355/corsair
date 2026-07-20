@@ -467,6 +467,7 @@ const WebhooksCreateInputSchema = z.object({
 const WebhooksUpdateInputSchema = z.object({
 	list_id: z.string(),
 	webhook_id: z.string(),
+	url: z.string().optional(),
 	events: webhookEvents,
 	sources: webhookSources,
 });
