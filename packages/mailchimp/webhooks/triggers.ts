@@ -2,7 +2,6 @@ import type { WebhookRequest } from 'corsair/core';
 import { logEventFromContext } from 'corsair/core';
 import type { z } from 'zod';
 import type { MailchimpContext, MailchimpWebhooks } from '../index';
-import { parseMailchimpKey } from '../utils';
 import {
 	CampaignEventSchema,
 	createMailchimpMatch,
@@ -31,21 +30,20 @@ function createTrigger<K extends keyof MailchimpWebhooks>(
 			ctx: MailchimpContext,
 			request: WebhookRequest<unknown>,
 		) => {
-			// Phase 1 limitation: Mailchimp webhook bodies only carry list_id,
-			// but OAuth stores account_id as the routing key. Reconciliation
-			// (URL-embedded hints or a list→account cache) is Phase 2 work;
-			// until then, fail loudly instead of silently dropping events.
-			// Auth mode is recovered from the packed ctx.key (MailchimpContext
-			// does not expose authType directly).
-			const { authType } = parseMailchimpKey(ctx.key);
-			if (authType === 'oauth_2') {
-				return {
-					success: false,
-					statusCode: 501,
-					error: `Mailchimp ${type} webhooks require API-key auth in Phase 1 (OAuth routing is Phase 2)`,
-				};
-			}
-
+			// Phase 1 limitation: inbound webhook DELIVERY (the part where
+			// Mailchimp POSTs to corsair and a trigger fires) is not yet
+			// wired end-to-end. The framework's account-level routing key
+			// (tenant_external_id, set to Mailchimp account_id at OAuth)
+			// cannot be reconciled with the list-scoped list_id that
+			// Mailchimp puts in webhook bodies. Webhook MANAGEMENT endpoints
+			// (CRUD against /lists/{id}/webhooks) work normally; routing
+			// inbound events to a specific corsair account is Phase 2 work
+			// (URL-embedded hints or a list→account lookup cache).
+			//
+			// The handlers below still run if a tenant is matched (e.g. via
+			// manual tenant_external_id configuration), so the schema
+			// validation + event logging path is exercised for callers that
+			// set up their own routing.
 			const verification = verifyMailchimpWebhookSecret(request, ctx.key);
 			if (!verification.valid) {
 				return {
