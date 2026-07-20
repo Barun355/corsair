@@ -44,7 +44,11 @@ export type MailchimpOAuthMetadata = {
  * data center is stable for the token's lifetime; caching avoids doubling
  * latency on every OAuth request and removes the metadata endpoint as a
  * single point of failure for already-resolved tenants.
+ *
+ * Bounded with FIFO eviction to keep memory predictable in multi-tenant
+ * deployments (a new token evicts the oldest entry once the cap is reached).
  */
+const OAUTH_METADATA_CACHE_MAX = 1000;
 const oauthMetadataCache = new Map<string, MailchimpOAuthMetadata>();
 
 export async function fetchMailchimpOAuthMetadata(
@@ -80,6 +84,10 @@ export async function fetchMailchimpOAuthMetadata(
 		login_url: body.login_url,
 		account_id: body.account_id,
 	};
+	if (oauthMetadataCache.size >= OAUTH_METADATA_CACHE_MAX) {
+		const oldestKey = oauthMetadataCache.keys().next().value;
+		if (oldestKey) oauthMetadataCache.delete(oldestKey);
+	}
 	oauthMetadataCache.set(accessToken, metadata);
 	return metadata;
 }
