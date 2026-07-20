@@ -87,25 +87,38 @@ export type MailchimpWebhookOutputs = {
 /**
  * Assigns `value` into `target` following Mailchimp's bracketed form-encoding
  * (`data[merges][FNAME]=Bob` → `{ data: { merges: { FNAME: 'Bob' } } }`).
+ *
+ * Bracket parsing is done with literal string slicing (no regex) and rejects
+ * any segment named `__proto__`, `constructor`, or `prototype` to prevent
+ * prototype pollution from malicious webhook bodies.
  */
+const UNSAFE_BRACKET_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 function assignBracketPath(
 	target: Record<string, unknown>,
 	rawKey: string,
 	value: string,
 ): void {
-	const match = rawKey.match(/^([^[]+)((?:\[[^\]]*\])*)$/);
-	const head = match?.[1];
-	if (head === undefined) {
+	const firstBracket = rawKey.indexOf('[');
+	if (firstBracket === -1) {
+		if (UNSAFE_BRACKET_KEYS.has(rawKey)) return;
 		target[rawKey] = value;
 		return;
 	}
 
-	const segments = [head];
-	for (const seg of (match?.[2] ?? '').matchAll(/\[([^\]]*)\]/g)) {
-		if (seg[1] !== undefined) segments.push(seg[1]);
+	const segments = [rawKey.slice(0, firstBracket)];
+	const bracketed = rawKey.slice(firstBracket);
+	for (let i = 0; i < bracketed.length; ) {
+		if (bracketed[i] !== '[') break;
+		const end = bracketed.indexOf(']', i);
+		if (end === -1) break;
+		segments.push(bracketed.slice(i + 1, end));
+		i = end + 1;
 	}
 
-	let cursor = target;
+	if (segments.some((s) => UNSAFE_BRACKET_KEYS.has(s))) return;
+
+	let cursor: Record<string, unknown> = target;
 	for (const key of segments.slice(0, -1)) {
 		const existing = cursor[key];
 		if (existing === null || typeof existing !== 'object') {
