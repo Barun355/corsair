@@ -103,6 +103,14 @@ export const remove: MailchimpEndpoints['campaignsRemove'] = async (
 		MailchimpEndpointOutputs['campaignsRemove']
 	>(`/campaigns/${input.campaign_id}`, ctx.key, { method: 'DELETE' });
 
+	if (ctx.db.campaigns) {
+		try {
+			await ctx.db.campaigns.deleteByEntityId(input.campaign_id);
+		} catch {
+			// Persistence is best-effort; the remote deletion already succeeded.
+		}
+	}
+
 	await logEventFromContext(
 		ctx,
 		'mailchimp.campaigns.remove',

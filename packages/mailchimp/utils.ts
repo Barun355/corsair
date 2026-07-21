@@ -115,6 +115,7 @@ export function parseMailchimpKey(rawKey: string): ParsedMailchimpKey {
 	}
 	const trimmed = rawKey.trim();
 	if (trimmed.startsWith('{')) {
+		// JSON fields are untrusted until both values pass runtime type checks.
 		let parsed: { token?: unknown; dc?: unknown };
 		try {
 			parsed = JSON.parse(trimmed);

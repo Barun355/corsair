@@ -1,4 +1,4 @@
-import { makeMailchimpRequest } from './client';
+import { getMailchimpAccountId, makeMailchimpRequest } from './client';
 
 jest.mock('corsair/core', () => ({
 	logEventFromContext: jest.fn().mockResolvedValue(undefined),
@@ -6,10 +6,15 @@ jest.mock('corsair/core', () => ({
 
 jest.mock('./client', () => {
 	const actual = jest.requireActual('./client');
-	return { ...actual, makeMailchimpRequest: jest.fn() };
+	return {
+		...actual,
+		getMailchimpAccountId: jest.fn().mockResolvedValue('account-1'),
+		makeMailchimpRequest: jest.fn(),
+	};
 });
 
 const mockRequest = jest.mocked(makeMailchimpRequest);
+const mockGetAccountId = jest.mocked(getMailchimpAccountId);
 
 import {
 	AccountEndpoints,
@@ -35,6 +40,10 @@ function createContext() {
 	return {
 		key: 'test-us1',
 		endpoints: {},
+		options: { webhookSecret: 'secret-1' },
+		keys: {
+			get_webhook_signature: jest.fn().mockResolvedValue('secret-1'),
+		},
 		db: {
 			lists: entityClient(),
 			members: entityClient(),
@@ -480,4 +489,179 @@ describe('Mailchimp endpoint routing', () => {
 			expect(options?.method).toBe(method);
 		},
 	);
+
+	it.each([
+		{
+			name: 'lists.remove',
+			fn: ListsEndpoints.remove as AnyEndpoint,
+			input: { list_id: 'L1' },
+			entity: 'lists' as const,
+			entityId: 'L1',
+		},
+		{
+			name: 'campaigns.remove',
+			fn: CampaignsEndpoints.remove as AnyEndpoint,
+			input: { campaign_id: 'C1' },
+			entity: 'campaigns' as const,
+			entityId: 'C1',
+		},
+		{
+			name: 'members.archive',
+			fn: MembersEndpoints.archive as AnyEndpoint,
+			input: { list_id: 'L1', subscriber_hash: 'member@example.com' },
+			entity: 'members' as const,
+			entityId: 'H1',
+		},
+		{
+			name: 'members.remove',
+			fn: MembersEndpoints.remove as AnyEndpoint,
+			input: { list_id: 'L1', subscriber_hash: 'member@example.com' },
+			entity: 'members' as const,
+			entityId: 'H1',
+		},
+	])('$name removes the deleted entity from the local DB', async (testCase) => {
+		jest.spyOn(require('./utils'), 'subscriberHash').mockReturnValue('H1');
+		const ctx = createContext();
+
+		await testCase.fn(ctx, testCase.input);
+
+		expect(ctx.db[testCase.entity].deleteByEntityId).toHaveBeenCalledWith(
+			testCase.entityId,
+		);
+	});
+
+	it.each([
+		{
+			name: 'webhooks.create',
+			fn: WebhooksEndpoints.create as AnyEndpoint,
+			input: { list_id: 'L1', url: 'https://example.com/hook' },
+		},
+		{
+			name: 'webhooks.update',
+			fn: WebhooksEndpoints.update as AnyEndpoint,
+			input: {
+				list_id: 'L1',
+				webhook_id: 'W1',
+				url: 'https://example.com/hook',
+			},
+		},
+	])(
+		'$name embeds account routing and webhook secret',
+		async ({ fn, input }) => {
+			const ctx = createContext();
+
+			await fn(ctx, input);
+
+			const [, , options] = mockRequest.mock.calls.at(-1)!;
+			const url = new URL(String(options?.body?.url));
+			expect(url.searchParams.get('aid')).toBe('account-1');
+			expect(url.searchParams.get('secret')).toBe('secret-1');
+			expect(mockGetAccountId).toHaveBeenCalledWith('test-us1');
+		},
+	);
+
+	it.each([
+		{
+			name: 'lists.remove',
+			fn: ListsEndpoints.remove as AnyEndpoint,
+			input: { list_id: 'L1' },
+			entity: 'lists' as const,
+		},
+		{
+			name: 'campaigns.remove',
+			fn: CampaignsEndpoints.remove as AnyEndpoint,
+			input: { campaign_id: 'C1' },
+			entity: 'campaigns' as const,
+		},
+		{
+			name: 'members.archive',
+			fn: MembersEndpoints.archive as AnyEndpoint,
+			input: { list_id: 'L1', subscriber_hash: 'member@example.com' },
+			entity: 'members' as const,
+		},
+		{
+			name: 'members.remove',
+			fn: MembersEndpoints.remove as AnyEndpoint,
+			input: { list_id: 'L1', subscriber_hash: 'member@example.com' },
+			entity: 'members' as const,
+		},
+	])(
+		'$name keeps the local entity when the remote request fails',
+		async (testCase) => {
+			jest.spyOn(require('./utils'), 'subscriberHash').mockReturnValue('H1');
+			const ctx = createContext();
+			mockRequest.mockRejectedValueOnce(new Error('Mailchimp unavailable'));
+
+			await expect(testCase.fn(ctx, testCase.input)).rejects.toThrow(
+				'Mailchimp unavailable',
+			);
+			expect(ctx.db[testCase.entity].deleteByEntityId).not.toHaveBeenCalled();
+		},
+	);
+
+	it('keeps successful remote deletion best-effort when local cleanup fails', async () => {
+		const ctx = createContext();
+		ctx.db.lists.deleteByEntityId.mockRejectedValueOnce(
+			new Error('DB unavailable'),
+		);
+
+		await expect(
+			ListsEndpoints.remove(ctx as never, { list_id: 'L1' }),
+		).resolves.toEqual({});
+	});
+
+	it('falls back to the stored webhook secret when the option is empty', async () => {
+		const ctx = createContext();
+		ctx.options.webhookSecret = '';
+		ctx.keys.get_webhook_signature.mockResolvedValueOnce('stored-secret');
+
+		await WebhooksEndpoints.create(ctx as never, {
+			list_id: 'L1',
+			url: 'https://example.com/hook',
+		});
+
+		const [, , options] = mockRequest.mock.calls.at(-1)!;
+		const url = new URL(String(options?.body?.url));
+		expect(url.searchParams.get('secret')).toBe('stored-secret');
+	});
+
+	it('does not create a webhook without an account routing ID', async () => {
+		const ctx = createContext();
+		mockGetAccountId.mockResolvedValueOnce(undefined);
+
+		await expect(
+			WebhooksEndpoints.create(ctx as never, {
+				list_id: 'L1',
+				url: 'https://example.com/hook',
+			}),
+		).rejects.toThrow(/account id/i);
+		expect(mockRequest).not.toHaveBeenCalled();
+	});
+
+	it('does not swallow account routing lookup failures', async () => {
+		const ctx = createContext();
+		mockGetAccountId.mockRejectedValueOnce(new Error('metadata unavailable'));
+
+		await expect(
+			WebhooksEndpoints.create(ctx as never, {
+				list_id: 'L1',
+				url: 'https://example.com/hook',
+			}),
+		).rejects.toThrow('metadata unavailable');
+		expect(mockRequest).not.toHaveBeenCalled();
+	});
+
+	it('does not create a webhook without a configured or stored secret', async () => {
+		const ctx = createContext();
+		ctx.options.webhookSecret = '';
+		ctx.keys.get_webhook_signature.mockResolvedValueOnce(undefined);
+
+		await expect(
+			WebhooksEndpoints.create(ctx as never, {
+				list_id: 'L1',
+				url: 'https://example.com/hook',
+			}),
+		).rejects.toThrow(/webhook secret/i);
+		expect(mockRequest).not.toHaveBeenCalled();
+	});
 });

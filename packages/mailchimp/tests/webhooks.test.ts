@@ -1,5 +1,6 @@
 import type { RawWebhookRequest } from 'corsair/core';
 
+import { mailchimp } from '../index';
 import {
 	createMailchimpMatch,
 	MailchimpTriggerEventSchema,
@@ -75,6 +76,30 @@ describe('createMailchimpMatch', () => {
 
 	it('W-7: returns false for an unparseable body', () => {
 		expect(createMailchimpMatch('subscribe')(raw(''))).toBe(false);
+	});
+});
+
+describe('pluginWebhookMatcher', () => {
+	const matcher = mailchimp().pluginWebhookMatcher!;
+
+	it('requires the Mailchimp secret routing parameter', () => {
+		const request: RawWebhookRequest = {
+			headers: { 'content-type': 'application/x-www-form-urlencoded' },
+			body: SUBSCRIBE_BODY,
+		};
+
+		expect(matcher(request)).toBe(false);
+		expect(matcher({ ...request, query: { secret: 's3cr3t' } })).toBe(true);
+	});
+
+	it('still rejects unsupported event types with a secret present', () => {
+		expect(
+			matcher({
+				headers: { 'content-type': 'application/x-www-form-urlencoded' },
+				body: 'type=other&data%5Blist_id%5D=a6b5da1054',
+				query: { secret: 's3cr3t' },
+			}),
+		).toBe(false);
 	});
 });
 

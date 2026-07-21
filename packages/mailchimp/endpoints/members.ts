@@ -134,6 +134,14 @@ export const archive: MailchimpEndpoints['membersArchive'] = async (
 		MailchimpEndpointOutputs['membersArchive']
 	>(`/lists/${input.list_id}/members/${hash}`, ctx.key, { method: 'DELETE' });
 
+	if (ctx.db.members) {
+		try {
+			await ctx.db.members.deleteByEntityId(hash);
+		} catch {
+			// Persistence is best-effort; the remote archive already succeeded.
+		}
+	}
+
 	await logEventFromContext(
 		ctx,
 		'mailchimp.members.archive',
@@ -156,6 +164,14 @@ export const remove: MailchimpEndpoints['membersRemove'] = async (
 		ctx.key,
 		{ method: 'POST' },
 	);
+
+	if (ctx.db.members) {
+		try {
+			await ctx.db.members.deleteByEntityId(hash);
+		} catch {
+			// Persistence is best-effort; the remote deletion already succeeded.
+		}
+	}
 
 	await logEventFromContext(
 		ctx,

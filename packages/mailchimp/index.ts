@@ -710,10 +710,14 @@ export function mailchimp<const T extends MailchimpPluginOptions>(
 		endpointSchemas: mailchimpEndpointSchemas,
 		webhookSchemas: mailchimpWebhookSchemas,
 		pluginWebhookMatcher: (request) => {
-			// Match on event type so other providers with overlapping event
-			// names cannot claim these webhooks. Mailchimp does not sign
-			// requests, so URL/header routing hints are unavailable here;
-			// tenant disambiguation happens in pluginTenantWebhookMatcher.
+			// Mailchimp does not sign webhook requests, so require the
+			// secret-in-URL routing hint in addition to the event type. The
+			// handler validates its value after the tenant is resolved.
+			const rawSecret = request.query?.secret;
+			const secret = Array.isArray(rawSecret) ? rawSecret[0] : rawSecret;
+			if (typeof secret !== 'string' || secret.length === 0) {
+				return false;
+			}
 			const body = parseMailchimpWebhookBody(request.body);
 			const type = body?.type;
 			return (

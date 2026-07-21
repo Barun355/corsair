@@ -4,6 +4,32 @@ import { getMailchimpAccountId, makeMailchimpRequest } from '../client';
 import type { MailchimpEndpoints } from '../index';
 import type { MailchimpEndpointOutputs } from './types';
 
+async function addWebhookRoutingParams(
+	rawUrl: string,
+	key: string,
+	webhookSecret: string | undefined,
+): Promise<string> {
+	let url: URL;
+	try {
+		url = new URL(rawUrl);
+	} catch {
+		// Malformed URL — forward as-is; Mailchimp will reject if invalid.
+		return rawUrl;
+	}
+
+	const accountId = await getMailchimpAccountId(key);
+	if (!accountId) {
+		throw new Error('A Mailchimp account ID is required for webhook routing.');
+	}
+	if (!webhookSecret) {
+		throw new Error('A Mailchimp webhook secret is required.');
+	}
+
+	url.searchParams.set('aid', accountId);
+	url.searchParams.set('secret', webhookSecret);
+	return url.toString();
+}
+
 export const list: MailchimpEndpoints['webhooksList'] = async (ctx, input) => {
 	const response = await makeMailchimpRequest<
 		MailchimpEndpointOutputs['webhooksList']
@@ -47,18 +73,10 @@ export const create: MailchimpEndpoints['webhooksCreate'] = async (
 	// hint the matcher only sees the body's list_id, which is never stored as a
 	// routing key, and the webhook silently fails to route.
 	if (typeof body.url === 'string') {
-		try {
-			const url = new URL(body.url);
-			if (!url.searchParams.has('aid')) {
-				const accountId = await getMailchimpAccountId(ctx.key);
-				if (accountId) {
-					url.searchParams.set('aid', accountId);
-					body.url = url.toString();
-				}
-			}
-		} catch {
-			// Malformed URL — forward as-is; Mailchimp will reject if invalid.
-		}
+		const webhookSecret =
+			(ctx.options.webhookSecret || (await ctx.keys.get_webhook_signature())) ??
+			undefined;
+		body.url = await addWebhookRoutingParams(body.url, ctx.key, webhookSecret);
 	}
 
 	const response = await makeMailchimpRequest<
@@ -79,6 +97,12 @@ export const update: MailchimpEndpoints['webhooksUpdate'] = async (
 	input,
 ) => {
 	const { list_id, webhook_id, ...body } = input;
+	if (typeof body.url === 'string') {
+		const webhookSecret =
+			(ctx.options.webhookSecret || (await ctx.keys.get_webhook_signature())) ??
+			undefined;
+		body.url = await addWebhookRoutingParams(body.url, ctx.key, webhookSecret);
+	}
 	const response = await makeMailchimpRequest<
 		MailchimpEndpointOutputs['webhooksUpdate']
 	>(`/lists/${list_id}/webhooks/${webhook_id}`, ctx.key, {
